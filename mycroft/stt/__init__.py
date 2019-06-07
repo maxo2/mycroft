@@ -110,13 +110,13 @@ class GoogleCloudStreamingSTT(GoogleJsonSTT):
     def __init__(self):
         super(GoogleCloudStreamingSTT, self).__init__()
         # override language with module specific language selection
+        self.lang = self.config.get('lang') or self.lang
         self.streaming = True
 
         credentials = service_account.Credentials.from_service_account_info(
             self.credential.get('json')
         )
 
-        self.lang = self.config.get('lang') or self.lang
         self.client = speech.SpeechClient(credentials=credentials)
         recognition_config = speech.types.RecognitionConfig(
             encoding=speech.enums.RecognitionConfig.AudioEncoding.LINEAR16,
