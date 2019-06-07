@@ -314,10 +314,14 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
             if check_for_signal('buttonPress'):
                 phrase_complete = True
 
-            if streaming_stt:
-                yield chunk
+            yield chunk
 
-        return None if streaming_stt else byte_data
+        return
+
+        #     if streaming_stt:
+        #         yield chunk
+
+        # return None if streaming_stt else byte_data
 
     @staticmethod
     def sec_to_bytes(sec, source):
@@ -518,24 +522,29 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
                 source.mute()
                 play_wav(audio_file).wait()
                 source.unmute()
-
-        if emitter.streaming_stt:
-            frame_data = self._record_phrase(
-                source,
-                sec_per_buffer,
-                streaming_stt=True
-            )
-        else:
-            frame_data = self._record_phrase(source, sec_per_buffer)
-            audio_data = self._create_audio_data(frame_data, source)
-            emitter.emit("recognizer_loop:record_end")
-            if self.save_utterances:
-                LOG.info("Recording utterance")
-                stamp = str(datetime.datetime.now())
-                filename = "/tmp/mycroft_utterance%s.wav" % stamp
-                with open(filename, 'wb') as filea:
-                    filea.write(audio_data.get_wav_data())
-                LOG.debug("Thinking...")
+        LOG.info('WAGNER emitter.streaming_stt {}'.format(emitter.streaming_stt))
+        frame_data = self._record_phrase(
+            source,
+            sec_per_buffer,
+            streaming_stt=True
+        )
+        #if emitter.streaming_stt:
+        #    frame_data = self._record_phrase(
+        #        source,
+        #        sec_per_buffer,
+        #        streaming_stt=True
+        #    )
+        #else:
+        #    frame_data = self._record_phrase(source, sec_per_buffer)
+        #    audio_data = self._create_audio_data(frame_data, source)
+        #    emitter.emit("recognizer_loop:record_end")
+        #    if self.save_utterances:
+        #        LOG.info("Recording utterance")
+        #        stamp = str(datetime.datetime.now())
+        #        filename = "/tmp/mycroft_utterance%s.wav" % stamp
+        #        with open(filename, 'wb') as filea:
+        #            filea.write(audio_data.get_wav_data())
+        #        LOG.debug("Thinking...")
 
         return self._record_phrase(source, sec_per_buffer)
 

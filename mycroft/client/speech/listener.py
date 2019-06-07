@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+import datetime
 import time
 from threading import Thread
 import sys
@@ -55,7 +56,20 @@ class AudioProducer(Thread):
             while self.state.running:
                 try:
                     audio = self.recognizer.listen(source, self.emitter)
-                    self.queue.put(audio)
+                    if audio:
+                        for audio_chunk in audio:
+                            self.queue.put(audio_chunk)
+                        LOG.info('WAGNER EMIT END EVENTS')
+                        self.emitter.emit("recognizer_loop:record_end")
+                        #self.emitter.emit("recognizer_loop:wakeword", {})
+                    # if self.emitter.streaming_stt and audio: 
+                    #     for audio_chunk in audio:
+                    #         self.queue.put(audio_chunk)
+                    #     LOG.info('WAGNER EMIT END EVENTS')
+                    #     #self.emitter.emit("recognizer_loop:wakeword", {})
+                    #     self.emitter.emit("recognizer_loop:record_end")
+                    # else:
+                    #     self.queue.put(audio)
                 except IOError as e:
                     # NOTE: Audio stack on raspi is slightly different, throws
                     # IOError every other listen, almost like it can't handle
@@ -63,6 +77,18 @@ class AudioProducer(Thread):
                     # The internet was not helpful.
                     # http://stackoverflow.com/questions/10733903/pyaudio-input-overflowed
                     self.emitter.emit("recognizer_loop:ioerror", e)
+                #except StopIteration as e:
+                    #LOG.info('WAGNER STOP ITERATION {}'.format(e))
+                    # self.emitter.emit("recognizer_loop:wakeword", {})
+                    # self.emitter.emit("recognizer_loop:record_end")
+                    #if self.recognizer.save_utterances:
+                    #    LOG.info("Recording utterance")
+                    #    stamp = str(datetime.datetime.now())
+                    #    filename = "/tmp/mycroft_utterance%s.wav" % stamp
+                    #    with open(filename, 'wb') as filea:
+                    #        filea.write(audio_data.get_wav_data())
+                    #    LOG.debug("Thinking...")
+
 
     def stop(self):
         """
@@ -97,14 +123,15 @@ class AudioConsumer(Thread):
         while self.state.running:
             self.read()
 
-    def read(self):
-        try:
-            audio = self.queue.get(timeout=0.5)
-        except Empty:
-            return
+    def generator_from_queue(self):
+        while True:
+            try:
+                yield self.queue.get(timeout=0.5)
+            except Empty:
+                return
 
-        if audio is None:
-            return
+    def read(self):
+        audio = self.generator_from_queue()
 
         if self.state.sleeping:
             self.wake_up(audio)
@@ -131,10 +158,30 @@ class AudioConsumer(Thread):
             'utterance': self.wakeword_recognizer.key_phrase,
             'session': SessionManager.get().session_id,
         }
-        self.emitter.emit("recognizer_loop:wakeword", payload)
+        #self.emitter.emit("recognizer_loop:wakeword", payload)
+ 
+        ts = time.time()
+        responses = self.stt.execute(audio)
+        for res in responses:
+            LOG.info('WAGNER -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=')
+            LOG.info(res)
+            LOG.info('WAGNER -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=')
 
-        if self._audio_length(audio) < self.MIN_AUDIO_SIZE:
-            LOG.warning("Audio too short to be processed")
+            if res.results and res.results[0].is_final:
+                text = res.results[0].alternatives[0].transcript
+                LOG.info('WAGNER: transcript {}'.format(text))
+                payload = {
+                    'utterances': [text],
+                    'lang': self.stt.lang,
+                    'session': SessionManager.get().session_id,
+                    'ident': 'test'
+                }
+                self.emitter.emit("recognizer_loop:utterance", payload)
+        LOG.info('WAGNER SST time {}'.format(time.time() - ts))
+
+        if True: #self._audio_length(audio) < self.MIN_AUDIO_SIZE:
+            pass
+            #LOG.warning("Audio too short to be processed")
         else:
             stopwatch = Stopwatch()
             with stopwatch:
@@ -244,6 +291,9 @@ class RecognizerLoop(EventEmitter):
             self.wakeword_recognizer)
         self.state = RecognizerLoopState()
 
+        self.stt = STTFactory.create()
+        self.streaming_stt = self.stt.streaming
+
     def create_wake_word_recognizer(self):
         # Create a local recognizer to hear the wakeup word, e.g. 'Hey Mycroft'
         LOG.info("creating wake word engine")
@@ -280,7 +330,7 @@ class RecognizerLoop(EventEmitter):
                                       self.responsive_recognizer, self)
         self.producer.start()
         self.consumer = AudioConsumer(self.state, queue, self,
-                                      STTFactory.create(),
+                                      self.stt, 
                                       self.wakeup_recognizer,
                                       self.wakeword_recognizer)
         self.consumer.start()
