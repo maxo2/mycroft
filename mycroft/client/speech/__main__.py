@@ -16,7 +16,7 @@ from threading import Lock
 
 from mycroft import dialog
 from mycroft.enclosure.api import EnclosureAPI
-from mycroft.client.speech.listener import RecognizerLoop
+from mycroft.client.speech.listener import StreamingRecognizerLoop
 from mycroft.configuration import Configuration
 from mycroft.identity import IdentityManager
 from mycroft.lock import Lock as PIDLock  # Create/Support PID locking file
@@ -153,7 +153,7 @@ def main():
     config = Configuration.get()
 
     # Register handlers on internal RecognizerLoop bus
-    loop = RecognizerLoop()
+    loop = StreamingRecognizerLoop()
     loop.on('recognizer_loop:utterance', handle_utterance)
     loop.on('recognizer_loop:speech.recognition.unknown', handle_unknown)
     loop.on('speak', handle_speak)
