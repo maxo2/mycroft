@@ -17,6 +17,9 @@ import json
 from abc import ABCMeta, abstractmethod
 from requests import post, put, exceptions
 from speech_recognition import Recognizer
+# TODO: Lazy import and remove from reqs?
+from google.cloud import speech
+from google.oauth2 import service_account
 
 from mycroft.api import STTApi
 from mycroft.configuration import Configuration
@@ -33,6 +36,7 @@ class STT:
         self.config = config_stt.get(config_stt.get("module"), {})
         self.credential = self.config.get("credential", {})
         self.recognizer = Recognizer()
+        self.streaming = False
 
     @staticmethod
     def init_language(config_core):
@@ -101,6 +105,36 @@ class GoogleCloudSTT(GoogleJsonSTT):
         return self.recognizer.recognize_google_cloud(audio,
                                                       self.json_credentials,
                                                       self.lang)
+
+class GoogleCloudStreamingSTT(GoogleJsonSTT):
+    def __init__(self):
+        super(GoogleCloudStreamingSTT, self).__init__()
+        # override language with module specific language selection
+        self.streaming = True
+
+        credentials = service_account.Credentials.from_service_account_info(
+            self.credential.get('json')
+        )
+
+        self.lang = self.config.get('lang') or self.lang
+        self.client = speech.SpeechClient(credentials=credentials)
+        recognition_config = speech.types.RecognitionConfig(
+            encoding=speech.enums.RecognitionConfig.AudioEncoding.LINEAR16,
+            sample_rate_hertz=16000,
+            language_code=self.lang,
+            model='command_and_search',
+            max_alternatives=1,
+        )
+        self.streaming_config = speech.types.StreamingRecognitionConfig(
+            config=recognition_config,
+            interim_results=True,
+            single_utterance=True,
+        )
+
+    def execute(self, audio, language=None):
+        self.lang = language or self.lang
+        req = (speech.types.StreamingRecognizeRequest(audio_content=x) for x in audio)
+        return self.client.streaming_recognize(self.streaming_config, req)
 
 
 class WITSTT(TokenSTT):
@@ -227,6 +261,7 @@ class STTFactory:
         "mycroft": MycroftSTT,
         "google": GoogleSTT,
         "google_cloud": GoogleCloudSTT,
+        "google_cloud_streaming": GoogleCloudStreamingSTT,
         "wit": WITSTT,
         "ibm": IBMSTT,
         "kaldi": KaldiSTT,
