@@ -245,9 +245,6 @@ class RecognizerLoop(EventEmitter):
             self.wakeword_recognizer)
         self.state = RecognizerLoopState()
 
-        self.stt = STTFactory.create()
-        self.streaming_stt = self.stt.streaming
-
     def create_wake_word_recognizer(self):
         # Create a local recognizer to hear the wakeup word, e.g. 'Hey Mycroft'
         LOG.info("creating wake word engine")
