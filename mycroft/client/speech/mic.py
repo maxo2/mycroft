@@ -228,7 +228,7 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
     def calc_energy(sound_chunk, sample_width):
         return audioop.rms(sound_chunk, sample_width)
 
-    def _record_phrase(self, source, sec_per_buffer):
+    def _record_phrase(self, source, sec_per_buffer, streaming_stt=False):
         """Record an entire spoken phrase.
 
         Essentially, this code waits for a period of silence and then returns
@@ -314,7 +314,10 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
             if check_for_signal('buttonPress'):
                 phrase_complete = True
 
-        return byte_data
+            if streaming_stt:
+                yield chunk
+
+        return None if streaming_stt else byte_data
 
     @staticmethod
     def sec_to_bytes(sec, source):
@@ -516,18 +519,25 @@ class ResponsiveRecognizer(speech_recognition.Recognizer):
                 play_wav(audio_file).wait()
                 source.unmute()
 
-        frame_data = self._record_phrase(source, sec_per_buffer)
-        audio_data = self._create_audio_data(frame_data, source)
-        emitter.emit("recognizer_loop:record_end")
-        if self.save_utterances:
-            LOG.info("Recording utterance")
-            stamp = str(datetime.datetime.now())
-            filename = "/tmp/mycroft_utterance%s.wav" % stamp
-            with open(filename, 'wb') as filea:
-                filea.write(audio_data.get_wav_data())
-            LOG.debug("Thinking...")
+        if emitter.streaming_stt:
+            frame_data = self._record_phrase(
+                source,
+                sec_per_buffer,
+                streaming_stt=True
+            )
+        else:
+            frame_data = self._record_phrase(source, sec_per_buffer)
+            audio_data = self._create_audio_data(frame_data, source)
+            emitter.emit("recognizer_loop:record_end")
+            if self.save_utterances:
+                LOG.info("Recording utterance")
+                stamp = str(datetime.datetime.now())
+                filename = "/tmp/mycroft_utterance%s.wav" % stamp
+                with open(filename, 'wb') as filea:
+                    filea.write(audio_data.get_wav_data())
+                LOG.debug("Thinking...")
 
-        return audio_data
+        return self._record_phrase(source, sec_per_buffer)
 
     def _adjust_threshold(self, energy, seconds_per_buffer):
         if self.dynamic_energy_threshold and energy > 0:
